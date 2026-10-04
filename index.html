@@ -1,0 +1,1085 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>時間割プロ - 厚木清南高校通信制 家族共有アプリ</title>
+
+  <!-- PWA & App Icons -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3652/3652191.png">
+  <meta name="theme-color" content="#4f46e5">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Firebase SDK (Compat Version) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+    body { font-family: 'Noto Sans JP', sans-serif; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  </style>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 pb-16">
+
+  <!-- Header -->
+  <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-50">
+    <div class="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between">
+      
+      <!-- ロゴ部分（5回連続タップで隠し運営コマンド起動） -->
+      <div onclick="handleLogoClick()" class="flex items-center space-x-2 cursor-pointer select-none active:opacity-70 transition">
+        <i data-lucide="calendar" class="w-6 h-6 text-amber-300"></i>
+        <h1 class="text-xl font-bold tracking-tight">時間割プロ</h1>
+      </div>
+
+      <div class="flex items-center space-x-2">
+        <!-- 最新版APKダウンロードボタン -->
+        <a href="https://github.com/astetris/school-schedule-app/releases/latest/download/app-debug.apk" 
+           target="_blank" 
+           class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1 rounded-full text-xs font-bold flex items-center shadow border border-emerald-400 active:scale-95 transition">
+          <i data-lucide="download" class="w-3.5 h-3.5 mr-1"></i>
+          <span>最新版APK</span>
+        </a>
+
+        <!-- 生徒番号表示（タップで変更） -->
+        <button onclick="editStudentId()" class="bg-indigo-800 hover:bg-indigo-900 px-2.5 py-1 rounded-full text-xs font-semibold flex items-center border border-indigo-500 shadow-sm">
+          <i data-lucide="user" class="w-3.5 h-3.5 mr-1 text-indigo-300"></i>
+          <span id="studentIdDisplay">生徒番号: C0000</span>
+        </button>
+
+        <!-- 運営モード終了ボタン -->
+        <button id="adminExitBtn" onclick="exitAdminMode()" class="hidden bg-rose-600 hover:bg-rose-700 text-white px-3 py-1 rounded-full text-xs font-bold flex items-center shadow">
+          <i data-lucide="log-out" class="w-3.5 h-3.5 mr-1"></i>
+          <span>運営終了</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Mode Banner（運営モード中のみ表示） -->
+    <div id="adminBanner" class="hidden bg-amber-500 text-slate-900 text-xs font-bold py-1.5 px-4 flex items-center justify-between shadow-inner">
+      <div class="flex items-center space-x-1">
+        <i data-lucide="wrench" class="w-3.5 h-3.5"></i>
+        <span>【隠し運営モード】厚木清南高校通信制 時間割・時程・締切の編集</span>
+      </div>
+      <button onclick="changeAdminPin()" class="bg-slate-900 hover:bg-slate-800 text-amber-300 px-2.5 py-1 rounded text-[11px] font-bold shadow transition flex items-center">
+        <i data-lucide="key" class="w-3 h-3 mr-1"></i> パスコード変更
+      </button>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="bg-indigo-800 text-indigo-100 overflow-x-auto no-scrollbar border-t border-indigo-600">
+      <div class="max-w-4xl mx-auto flex whitespace-nowrap px-2 text-sm font-medium">
+        <button onclick="switchTab('today')" id="tab-today" class="tab-btn px-4 py-2.5 border-b-2 border-amber-400 text-amber-300 font-bold flex items-center space-x-1">
+          <i data-lucide="check-circle" class="w-4 h-4"></i>
+          <span>今日の予定</span>
+        </button>
+        <button onclick="switchTab('sunday')" id="tab-sunday" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="sun" class="w-4 h-4 text-amber-400"></i>
+          <span>日曜</span>
+        </button>
+        <button onclick="switchTab('regular')" id="tab-regular" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="book-open" class="w-4 h-4 text-emerald-400"></i>
+          <span>教科</span>
+        </button>
+        <button onclick="switchTab('spring')" id="tab-spring" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="flower" class="w-4 h-4 text-pink-400"></i>
+          <span>春季基礎</span>
+        </button>
+        <button onclick="switchTab('night')" id="tab-night" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="moon" class="w-4 h-4 text-indigo-300"></i>
+          <span>夜間</span>
+        </button>
+        <button onclick="switchTab('exam')" id="tab-exam" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="file-text" class="w-4 h-4 text-rose-400"></i>
+          <span>試験・締切</span>
+        </button>
+        <button onclick="switchTab('notice')" id="tab-notice" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="megaphone" class="w-4 h-4 text-yellow-300"></i>
+          <span>掲示板</span>
+        </button>
+        <button onclick="switchTab('chat')" id="tab-chat" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="message-square" class="w-4 h-4 text-sky-300"></i>
+          <span>家族チャット</span>
+        </button>
+        <button onclick="switchTab('report')" id="tab-report" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1">
+          <i data-lucide="mail" class="w-4 h-4 text-purple-300"></i>
+          <span>運営へ報告</span>
+        </button>
+        <button onclick="switchTab('community')" id="tab-community" class="tab-btn px-4 py-2.5 border-b-2 border-transparent hover:text-white flex items-center space-x-1 opacity-70">
+          <i data-lucide="users" class="w-4 h-4 text-gray-300"></i>
+          <span>コミュニティ</span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="max-w-4xl mx-auto p-4 space-y-4">
+
+    <!-- アプリ更新案内バナー -->
+    <div class="bg-gradient-to-r from-emerald-600 to-teal-700 text-white rounded-xl p-3.5 shadow-md flex items-center justify-between">
+      <div class="flex items-center space-x-2.5">
+        <i data-lucide="sparkles" class="w-5 h-5 text-amber-300 shrink-0"></i>
+        <div>
+          <h3 class="font-bold text-xs sm:text-sm">最新版アプリ (Android APK) 配布中</h3>
+          <p class="text-[11px] text-emerald-100 mt-0.5">最新版を直接ダウンロード・アップデートできます</p>
+        </div>
+      </div>
+      <a href="https://github.com/astetris/school-schedule-app/releases/latest/download/app-debug.apk" 
+         target="_blank" 
+         class="bg-white text-emerald-800 hover:bg-emerald-50 px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center shrink-0 transition active:scale-95">
+        <i data-lucide="download" class="w-4 h-4 mr-1 text-emerald-600"></i>
+        <span>APKを入手</span>
+      </a>
+    </div>
+
+    <!-- 1. 今日の予定 タブ -->
+    <section id="content-today" class="tab-content space-y-4">
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-lg font-bold text-slate-800 flex items-center">
+            <i data-lucide="calendar-days" class="w-5 h-5 mr-2 text-indigo-600"></i>
+            受講選択済みの時間割・予定
+          </h2>
+          <span class="text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-semibold border border-indigo-200" id="todayDateStr">2026年4月5日(日)</span>
+        </div>
+
+        <div id="todayAttendanceSummary" class="grid grid-cols-2 gap-3 mb-4 text-center">
+          <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+            <span class="text-xs text-emerald-600 font-medium block">受講（出席）予定数</span>
+            <span class="text-xl font-bold text-emerald-700" id="summaryAttend">0 コマ</span>
+          </div>
+          <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+            <span class="text-xs text-slate-500 font-medium block">未選択のコマ枠</span>
+            <span class="text-xl font-bold text-slate-600" id="summaryUnselected">0 枠</span>
+          </div>
+        </div>
+
+        <div id="todayList" class="space-y-2">
+          <!-- JSで動的に表示 -->
+        </div>
+      </div>
+
+      <!-- 直近の試験・締切アラート -->
+      <div class="bg-amber-50 rounded-xl p-4 border border-amber-200 shadow-sm">
+        <h3 class="font-bold text-amber-900 text-sm flex items-center mb-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 mr-1.5 text-amber-600"></i>
+          直近の試験日・各種締切日メモ
+        </h3>
+        <div id="todayDeadlinesList" class="space-y-2 text-sm text-amber-950">
+          <!-- JSで表示 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 日曜スクーリング タブ -->
+    <section id="content-sunday" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center bg-amber-50 p-3 rounded-xl border border-amber-200">
+        <div>
+          <h2 class="font-bold text-amber-900 flex items-center">
+            <i data-lucide="sun" class="w-5 h-5 mr-1.5 text-amber-500"></i> 日曜スクーリング
+          </h2>
+          <p class="text-xs text-amber-700 mt-0.5">厚木清南高校通信制 日曜スクーリング時間割</p>
+        </div>
+        <button onclick="addNewPeriodGroup('sunday')" class="admin-only hidden bg-amber-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-amber-700 shadow">
+          <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> ＋ 新しいコマ枠を追加
+        </button>
+      </div>
+
+      <div id="sundayCourses" class="space-y-4"></div>
+    </section>
+
+    <!-- 3. 教科スクーリング タブ -->
+    <section id="content-regular" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+        <div>
+          <h2 class="font-bold text-emerald-900 flex items-center">
+            <i data-lucide="book-open" class="w-5 h-5 mr-1.5 text-emerald-500"></i> 教科スクーリング
+          </h2>
+          <p class="text-xs text-emerald-700 mt-0.5">平日教科スクーリング時間割</p>
+        </div>
+        <button onclick="addNewPeriodGroup('regular')" class="admin-only hidden bg-emerald-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-emerald-700 shadow">
+          <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> ＋ 新しいコマ枠を追加
+        </button>
+      </div>
+
+      <div id="regularCourses" class="space-y-4"></div>
+    </section>
+
+    <!-- 4. 春季基礎スクーリング タブ -->
+    <section id="content-spring" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center bg-pink-50 p-3 rounded-xl border border-pink-200">
+        <div>
+          <h2 class="font-bold text-pink-900 flex items-center">
+            <i data-lucide="flower" class="w-5 h-5 mr-1.5 text-pink-500"></i> 春季基礎スクーリング
+          </h2>
+          <p class="text-xs text-pink-700 mt-0.5">集中開催される春季基礎講座</p>
+        </div>
+        <button onclick="addNewPeriodGroup('spring')" class="admin-only hidden bg-pink-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-pink-700 shadow">
+          <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> ＋ 新しいコマ枠を追加
+        </button>
+      </div>
+
+      <div id="springCourses" class="space-y-4"></div>
+    </section>
+
+    <!-- 5. 夜間スクーリング タブ -->
+    <section id="content-night" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center bg-slate-800 text-white p-3 rounded-xl shadow">
+        <div>
+          <h2 class="font-bold text-amber-300 flex items-center">
+            <i data-lucide="moon" class="w-5 h-5 mr-1.5"></i> 夜間スクーリング
+          </h2>
+          <p class="text-xs text-slate-300 mt-0.5">夜間開講授業の選択</p>
+        </div>
+        <button onclick="addNewPeriodGroup('night')" class="admin-only hidden bg-amber-500 text-slate-900 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-amber-400 shadow">
+          <i data-lucide="plus-circle" class="w-4 h-4 mr-1"></i> ＋ 新しいコマ枠を追加
+        </button>
+      </div>
+
+      <div id="nightCourses" class="space-y-4"></div>
+    </section>
+
+    <!-- 6. 試験・締切 タブ -->
+    <section id="content-exam" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="font-bold text-slate-800 flex items-center">
+            <i data-lucide="clock" class="w-5 h-5 mr-2 text-rose-500"></i> 試験時間表・日程区分
+          </h2>
+          <button onclick="addExamSlot()" class="admin-only hidden bg-rose-600 text-white px-3 py-1 rounded-lg text-xs font-bold flex items-center hover:bg-rose-700">
+            <i data-lucide="plus" class="w-3.5 h-3.5 mr-1"></i> 時間枠追加
+          </button>
+        </div>
+        <div id="examCourses" class="space-y-2"></div>
+      </div>
+
+      <!-- 締切日一覧 & 運営登録 -->
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+        <div class="flex justify-between items-center mb-3">
+          <div>
+            <h2 class="font-bold text-slate-800 flex items-center">
+              <i data-lucide="calendar" class="w-5 h-5 mr-2 text-indigo-600"></i>
+              試験日・レポート/面接/受験申込 締切日一覧
+            </h2>
+            <p class="text-xs text-slate-500">原則として試験日の2週間前が締切日です</p>
+          </div>
+          <button onclick="openDeadlineModal()" class="admin-only hidden bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 shadow">
+            <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 締切・試験日追加
+          </button>
+        </div>
+
+        <div id="deadlinesList" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- 7. 掲示板 タブ -->
+    <section id="content-notice" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center bg-indigo-50 p-3 rounded-xl border border-indigo-200">
+        <div>
+          <h2 class="font-bold text-indigo-900 flex items-center">
+            <i data-lucide="megaphone" class="w-5 h-5 mr-1.5 text-indigo-600"></i> 運営からの掲示板
+          </h2>
+          <p class="text-xs text-indigo-700">アステ（運営）からの全体連絡・お知らせです</p>
+        </div>
+        <button onclick="openNoticeModal()" class="admin-only hidden bg-indigo-600 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center hover:bg-indigo-700 shadow">
+          <i data-lucide="plus" class="w-4 h-4 mr-1"></i> 新規投稿
+        </button>
+      </div>
+
+      <div id="noticesList" class="space-y-3"></div>
+    </section>
+
+    <!-- 8. 家族チャット タブ -->
+    <section id="content-chat" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-xl shadow-sm border border-slate-200 flex flex-col h-[520px]">
+        <div class="p-3 border-b border-slate-100 bg-slate-50 rounded-t-xl flex justify-between items-center">
+          <div class="flex items-center space-x-2">
+            <i data-lucide="message-square" class="w-5 h-5 text-sky-500"></i>
+            <h2 class="font-bold text-slate-800 text-sm">家族連絡用チャット</h2>
+          </div>
+          <span class="text-xs bg-sky-100 text-sky-700 px-2 py-0.5 rounded font-medium">生徒番号: <span id="chatStudentId">C0000</span></span>
+        </div>
+
+        <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50">
+          <!-- JSでチャット表示 -->
+        </div>
+
+        <div class="p-3 border-t border-slate-200 bg-white rounded-b-xl flex space-x-2">
+          <input type="text" id="chatInput" placeholder="メッセージを入力..." class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <button onclick="sendChatMessage()" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 flex items-center">
+            <i data-lucide="send" class="w-4 h-4"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. 運営へ報告 タブ -->
+    <section id="content-report" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+        <h2 class="font-bold text-slate-800 flex items-center mb-2">
+          <i data-lucide="mail" class="w-5 h-5 mr-2 text-purple-600"></i> 運営（アステ）へ非公開報告
+        </h2>
+        <p class="text-xs text-slate-500 mb-4">日程の不整合、時間割の質問、アプリの改善希望などを運営者（アステ）だけに送信できます。</p>
+
+        <form onsubmit="submitReport(event)" class="space-y-3">
+          <textarea id="reportText" rows="4" required placeholder="報告内容を入力してください..." class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"></textarea>
+          <button type="submit" class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-purple-700 flex items-center shadow">
+            <i data-lucide="send" class="w-4 h-4 mr-1.5"></i> 報告を送信する
+          </button>
+        </form>
+      </div>
+
+      <!-- 運営のみが見れる受信一覧 -->
+      <div class="admin-only hidden bg-purple-50 rounded-xl p-4 border border-purple-200">
+        <h3 class="font-bold text-purple-900 text-sm flex items-center mb-3">
+          <i data-lucide="inbox" class="w-4 h-4 mr-1.5 text-purple-600"></i> 運営者受信用：家族からの報告一覧
+        </h3>
+        <div id="reportsAdminList" class="space-y-2"></div>
+      </div>
+    </section>
+
+    <!-- 10. コミュニティ タブ -->
+    <section id="content-community" class="tab-content hidden space-y-4">
+      <div class="bg-white rounded-xl p-8 text-center border border-slate-200 shadow-sm space-y-3">
+        <div class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto text-slate-400">
+          <i data-lucide="users" class="w-8 h-8"></i>
+        </div>
+        <h2 class="text-lg font-bold text-slate-800">厚木清南 クラス・校内コミュニティ（準備中）</h2>
+        <p class="text-xs text-slate-500 max-w-md mx-auto">
+          後々、クラスメイトや学校全体の生徒同士で情報交換ができるコミュニティ機能を拡張予定です。
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 生徒番号変更モーダル（「C」固定入力） -->
+  <div id="studentIdModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-5 max-w-sm w-full shadow-xl space-y-4">
+      <h3 class="font-bold text-slate-800 text-base flex items-center">
+        <i data-lucide="user-check" class="w-5 h-5 mr-2 text-indigo-600"></i> 生徒番号（ID）の設定
+      </h3>
+      <p class="text-xs text-slate-500">ご家族で同じ生徒番号を設定すると、時間割やチャットが自動同期されます。</p>
+      
+      <div class="flex items-center space-x-2">
+        <span class="bg-indigo-100 text-indigo-800 font-bold px-3 py-2 rounded-lg text-lg border border-indigo-200">C</span>
+        <input type="number" id="inputStudentNumberDigits" placeholder="0000" class="flex-1 border border-slate-300 rounded-lg p-2 text-lg font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500">
+      </div>
+
+      <div class="flex justify-end space-x-2 pt-2">
+        <button onclick="closeStudentIdModal()" class="px-4 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">キャンセル</button>
+        <button onclick="saveStudentIdModal()" class="px-4 py-2 rounded-lg text-xs font-bold bg-indigo-600 text-white hover:bg-indigo-700 shadow">保存・同期</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 締切日追加モーダル -->
+  <div id="deadlineModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-5 max-w-md w-full shadow-xl space-y-4">
+      <h3 class="font-bold text-slate-800 text-lg flex items-center">
+        <i data-lucide="plus-circle" class="w-5 h-5 mr-2 text-indigo-600"></i> 試験日・締切日の追加
+      </h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">タイトル / 種別</label>
+          <input type="text" id="modalDeadlineTitle" placeholder="例: 前期定期試験 (A日程) / レポート提出締切" class="w-full border rounded-lg p-2">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">日付</label>
+            <input type="date" id="modalDeadlineDate" class="w-full border rounded-lg p-2">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">曜日</label>
+            <input type="text" id="modalDeadlineDay" placeholder="例: 日 / 火" class="w-full border rounded-lg p-2">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">時間（任意）</label>
+          <input type="text" id="modalDeadlineTime" placeholder="例: 17:00必着" class="w-full border rounded-lg p-2">
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2">
+        <button onclick="closeDeadlineModal()" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">キャンセル</button>
+        <button onclick="saveDeadlineModal()" class="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700">追加保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 掲示板投稿モーダル -->
+  <div id="noticeModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl p-5 max-w-md w-full shadow-xl space-y-4">
+      <h3 class="font-bold text-slate-800 text-lg flex items-center">
+        <i data-lucide="megaphone" class="w-5 h-5 mr-2 text-indigo-600"></i> 掲示板に投稿
+      </h3>
+      <div class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">タイトル</label>
+          <input type="text" id="modalNoticeTitle" placeholder="例: 後期スクーリングの準備物について" class="w-full border rounded-lg p-2">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">本文</label>
+          <textarea id="modalNoticeContent" rows="4" placeholder="詳細な連絡事項を記載..." class="w-full border rounded-lg p-2"></textarea>
+        </div>
+      </div>
+      <div class="flex justify-end space-x-2 pt-2">
+        <button onclick="closeNoticeModal()" class="px-4 py-2 rounded-lg text-sm font-semibold bg-slate-100 text-slate-600 hover:bg-slate-200">キャンセル</button>
+        <button onclick="saveNoticeModal()" class="px-4 py-2 rounded-lg text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700">投稿する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript Logics -->
+  <script>
+    // --- Firebase Initialization ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDxAnEw5yM4MSO6EmcWnkmVO9a76L1tFTE",
+      authDomain: "atsugi-seinan-app.firebaseapp.com",
+      projectId: "atsugi-seinan-app",
+      storageBucket: "atsugi-seinan-app.firebasestorage.app",
+      messagingSenderId: "394125386691",
+      appId: "1:394125386691:web:1a0e8d2c171fc74d8b5376"
+    };
+
+    let db = null;
+    let unsubscribeSync = null;
+
+    try {
+      if (firebaseConfig.apiKey !== "YOUR_API_KEY") {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+      }
+    } catch (e) {
+      console.warn("Firebase Init Warning:", e);
+    }
+
+    // Initial State Data Preset (厚木清南高校通信制 スクーリング・試験 時間表)
+    const initialAppState = {
+      studentId: 'C0000',
+      isAdmin: false,
+      adminPin: 'CQCQ', // 初期パスコード: CQCQ
+      courses: {
+        sunday: [
+          { id: 's1_1', period: '①', time: '08:50～09:40', subject: '現代の国語', selected: true },
+          { id: 's1_2', period: '①', time: '08:50～09:40', subject: '数学I', selected: false },
+          { id: 's1_3', period: '①', time: '08:50～09:40', subject: '英語コミュニケーションI', selected: false },
+          { id: 's2_1', period: '②', time: '09:50～10:40', subject: '言語文化', selected: false },
+          { id: 's2_2', period: '②', time: '09:50～10:40', subject: '歴史総合', selected: false },
+          { id: 's3_1', period: '③', time: '10:50～11:40', subject: '地理総合', selected: false },
+          { id: 's4_1', period: '④', time: '11:50～12:40', subject: '公共', selected: false },
+          { id: 's_ct', period: 'CT', time: '13:20～13:45', subject: 'ホームルーム', selected: true },
+          { id: 's5_1', period: '⑤', time: '13:50～14:40', subject: '科学と人間生活', selected: false },
+          { id: 's6_1', period: '⑥', time: '14:50～15:40', subject: '体育I', selected: false }
+        ],
+        regular: [
+          { id: 'r1_1', period: '❶', time: '09:25～10:15', subject: '物理基礎', selected: false },
+          { id: 'r1_2', period: '❶', time: '09:25～10:15', subject: '化学基礎', selected: false }
+        ],
+        spring: [
+          { id: 'sp1_1', period: '1', time: '13:15～14:05', subject: '春季基礎 基礎講座', selected: false }
+        ],
+        night: [
+          { id: 'n1_1', period: '①', time: '17:30～18:20', subject: '夜間 総合学習', selected: false }
+        ],
+        exam: [
+          { id: 'e1', period: '1時程', time: '09:20～10:00', note: '◎ A日程 / ○ B日程', dayOfWeek: '日・火' },
+          { id: 'e2', period: '2時程', time: '10:15～10:55', note: '◎ A日程 / ○ B日程', dayOfWeek: '日・火' }
+        ]
+      },
+      deadlines: [
+        { id: 'd1', title: '前期 レポート・面接・受験申込締切', date: '2026-07-12', dayOfWeek: '日', time: '17:00必着' },
+        { id: 'd2', title: '前期 試験日 (A日程)', date: '2026-07-26', dayOfWeek: '日', time: '09:20開始' }
+      ],
+      notices: [
+        { id: 'm1', title: '【運営連絡】厚木清南高校通信制 スクーリング時間割を登録しました', date: '2026-04-01', content: '各コマで受講する授業の「選択する」ボタンをタップして時間割を作成してください。' }
+      ],
+      chatMessages: [
+        { id: 'c1', sender: 'アステ', text: '①コマ目は「現代の国語」を選択しておいたよ！', time: '10:00', isMe: true }
+      ],
+      reports: []
+    };
+
+    let appState = JSON.parse(localStorage.getItem('jikanwari_pro_state')) || initialAppState;
+    if (!appState.adminPin) appState.adminPin = 'CQCQ';
+
+    // Local Storage & Firebase Push
+    function saveState(pushToCloud = true) {
+      localStorage.setItem('jikanwari_pro_state', JSON.stringify(appState));
+      renderAll();
+
+      if (pushToCloud && db && appState.studentId) {
+        db.collection('schedules').doc(appState.studentId).set({
+          courses: appState.courses,
+          deadlines: appState.deadlines,
+          notices: appState.notices,
+          chatMessages: appState.chatMessages,
+          reports: appState.reports,
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true }).catch(err => console.error("Firebase Sync Error:", err));
+      }
+    }
+
+    // Subscribe to Firebase Realtime Updates
+    function initFirebaseSync() {
+      if (!db || !appState.studentId) return;
+
+      if (unsubscribeSync) unsubscribeSync();
+
+      unsubscribeSync = db.collection('schedules').doc(appState.studentId)
+        .onSnapshot(doc => {
+          if (doc.exists) {
+            const data = doc.data();
+            if (data.courses) appState.courses = data.courses;
+            if (data.deadlines) appState.deadlines = data.deadlines;
+            if (data.notices) appState.notices = data.notices;
+            if (data.chatMessages) appState.chatMessages = data.chatMessages;
+            if (data.reports) appState.reports = data.reports;
+
+            localStorage.setItem('jikanwari_pro_state', JSON.stringify(appState));
+            renderAll();
+          }
+        }, err => console.error("Snapshot error:", err));
+    }
+
+    // 隠しコマンド（ロゴ5回タップ検出）
+    let logoTapCount = 0;
+    let logoTapTimer = null;
+
+    function handleLogoClick() {
+      logoTapCount++;
+      clearTimeout(logoTapTimer);
+
+      logoTapTimer = setTimeout(() => {
+        logoTapCount = 0;
+      }, 2000);
+
+      if (logoTapCount >= 5) {
+        logoTapCount = 0;
+        const inputPin = prompt('【運営隠しコマンド】パスコードを入力してください:');
+        if (inputPin === appState.adminPin) {
+          appState.isAdmin = true;
+          alert('運営者（アステ）モードが有効になりました！');
+          saveState(false);
+        } else if (inputPin !== null) {
+          alert('パスコードが正しくありません。');
+        }
+      }
+    }
+
+    // 運営用パスコード変更
+    function changeAdminPin() {
+      const newPin = prompt('新しい運営用パスコードを入力してください:', appState.adminPin);
+      if (newPin && newPin.trim() !== '') {
+        appState.adminPin = newPin.trim();
+        saveState(false);
+        alert(`パスコードを「${appState.adminPin}」に変更しました。`);
+      }
+    }
+
+    function exitAdminMode() {
+      appState.isAdmin = false;
+      alert('通常モードに戻りました。');
+      saveState(false);
+    }
+
+    // Tab Switcher
+    function switchTab(tabId) {
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.tab-btn').forEach(el => {
+        el.classList.remove('border-amber-400', 'text-amber-300', 'font-bold');
+        el.classList.add('border-transparent');
+      });
+
+      const activeContent = document.getElementById(`content-${tabId}`);
+      if (activeContent) activeContent.classList.remove('hidden');
+
+      const activeTabBtn = document.getElementById(`tab-${tabId}`);
+      if (activeTabBtn) {
+        activeTabBtn.classList.remove('border-transparent');
+        activeTabBtn.classList.add('border-amber-400', 'text-amber-300', 'font-bold');
+      }
+    }
+
+    // Student ID Editor Modal Controls ("C" Fixed)
+    function editStudentId() {
+      const currentDigits = appState.studentId.replace(/^C/i, '');
+      document.getElementById('inputStudentNumberDigits').value = currentDigits;
+      document.getElementById('studentIdModal').classList.remove('hidden');
+    }
+
+    function closeStudentIdModal() {
+      document.getElementById('studentIdModal').classList.add('hidden');
+    }
+
+    function saveStudentIdModal() {
+      const digits = document.getElementById('inputStudentNumberDigits').value.trim();
+      if (digits !== '') {
+        const fullId = 'C' + digits;
+        appState.studentId = fullId;
+        closeStudentIdModal();
+        saveState(false);
+        initFirebaseSync();
+      }
+    }
+
+    // コマ・授業の受講選択
+    function selectCourse(category, id, period) {
+      appState.courses[category].forEach(c => {
+        if (c.period === period) {
+          if (c.id === id) {
+            c.selected = !c.selected;
+          } else {
+            c.selected = false;
+          }
+        }
+      });
+      saveState();
+    }
+
+    // --- 運営モード用：コマ枠＆時間の管理 ---
+    function addNewPeriodGroup(category) {
+      const newPeriodName = prompt('追加するコマ枠の名前を入力（例: ③ や ⑦、CTなど）:', '新コマ');
+      if (!newPeriodName || newPeriodName.trim() === '') return;
+
+      const newTimeRange = prompt('そのコマ枠の時間帯を入力:', '10:50～11:40');
+      const timeStr = newTimeRange && newTimeRange.trim() !== '' ? newTimeRange.trim() : '10:00～10:50';
+
+      const newId = category + '_' + Date.now();
+      appState.courses[category].push({
+        id: newId,
+        period: newPeriodName.trim(),
+        time: timeStr,
+        subject: '新規科目',
+        selected: false
+      });
+      saveState();
+    }
+
+    function addSubjectToGroup(category, period, time) {
+      const newId = category + '_' + Date.now();
+      appState.courses[category].push({
+        id: newId,
+        period: period,
+        time: time,
+        subject: '新しい科目名',
+        selected: false
+      });
+      saveState();
+    }
+
+    function updateGroupPeriodName(category, oldPeriod, newPeriod) {
+      if (!newPeriod || newPeriod.trim() === '') return;
+      appState.courses[category].forEach(c => {
+        if (c.period === oldPeriod) {
+          c.period = newPeriod.trim();
+        }
+      });
+      saveState();
+    }
+
+    function updateGroupTime(category, period, newTime) {
+      appState.courses[category].forEach(c => {
+        if (c.period === period) {
+          c.time = newTime;
+        }
+      });
+      saveState();
+    }
+
+    function deletePeriodGroup(category, period) {
+      if (confirm(`コマ枠「${period}」とその中のすべての科目を削除しますか？`)) {
+        appState.courses[category] = appState.courses[category].filter(c => c.period !== period);
+        saveState();
+      }
+    }
+
+    function updateSubjectName(category, id, newSubject) {
+      const c = appState.courses[category].find(item => item.id === id);
+      if (c) {
+        c.subject = newSubject;
+        saveState();
+      }
+    }
+
+    function deleteSubject(category, id) {
+      if (confirm('この科目を削除しますか？')) {
+        appState.courses[category] = appState.courses[category].filter(c => c.id !== id);
+        saveState();
+      }
+    }
+
+    // Render Logic
+    function renderAll() {
+      document.querySelectorAll('.admin-only').forEach(el => {
+        if (appState.isAdmin) el.classList.remove('hidden');
+        else el.classList.add('hidden');
+      });
+
+      document.getElementById('adminBanner').style.display = appState.isAdmin ? 'flex' : 'none';
+      document.getElementById('adminExitBtn').style.display = appState.isAdmin ? 'flex' : 'none';
+      document.getElementById('studentIdDisplay').textContent = `生徒番号: ${appState.studentId}`;
+      document.getElementById('chatStudentId').textContent = appState.studentId;
+
+      renderTodayTab();
+      renderCourseCategory('sunday');
+      renderCourseCategory('regular');
+      renderCourseCategory('spring');
+      renderCourseCategory('night');
+      renderExamCategory();
+      renderDeadlines();
+      renderNotices();
+      renderChat();
+      renderReports();
+
+      lucide.createIcons();
+    }
+
+    // Render Today's Schedule
+    function renderTodayTab() {
+      const todayListEl = document.getElementById('todayList');
+      todayListEl.innerHTML = '';
+
+      let attendCount = 0;
+      let unselectedPeriods = new Set();
+      const allCategories = ['sunday', 'regular', 'spring', 'night'];
+
+      allCategories.forEach(cat => {
+        appState.courses[cat].forEach(c => {
+          if (c.selected) {
+            attendCount++;
+            const card = document.createElement('div');
+            card.className = 'p-3 rounded-xl border border-emerald-200 bg-emerald-50 flex justify-between items-center shadow-sm';
+            card.innerHTML = `
+              <div>
+                <div class="flex items-center space-x-2">
+                  <span class="font-bold text-emerald-900 text-sm">${c.period} コマ</span>
+                  <span class="text-xs bg-emerald-200/80 text-emerald-800 px-2 py-0.5 rounded font-semibold">${c.time}</span>
+                  <span class="text-xs font-bold text-indigo-600">[${getCategoryLabel(cat)}]</span>
+                </div>
+                <div class="text-xs font-bold text-slate-800 mt-1">${c.subject || '（科目未入力）'}</div>
+              </div>
+              <span class="text-xs font-bold px-2.5 py-1 rounded-full bg-emerald-600 text-white">受講する</span>
+            `;
+            todayListEl.appendChild(card);
+          } else {
+            unselectedPeriods.add(`${cat}_${c.period}`);
+          }
+        });
+      });
+
+      document.getElementById('summaryAttend').textContent = `${attendCount} コマ`;
+      document.getElementById('summaryUnselected').textContent = `${unselectedPeriods.size} 枠`;
+
+      if (todayListEl.children.length === 0) {
+        todayListEl.innerHTML = '<p class="text-xs text-slate-400 text-center py-6">現在、受講選択された授業はありません。<br>「日曜」「教科」などのタブから受講科目を選択してください。</p>';
+      }
+    }
+
+    function getCategoryLabel(cat) {
+      const map = { sunday: '日曜', regular: '教科', spring: '春季', night: '夜間' };
+      return map[cat] || cat;
+    }
+
+    // Render Course Category
+    function renderCourseCategory(category) {
+      const container = document.getElementById(`${category}Courses`);
+      if (!container) return;
+      container.innerHTML = '';
+
+      const grouped = {};
+      appState.courses[category].forEach(c => {
+        if (!grouped[c.period]) grouped[c.period] = [];
+        grouped[c.period].push(c);
+      });
+
+      Object.keys(grouped).forEach(period => {
+        const groupList = grouped[period];
+        const groupWrapper = document.createElement('div');
+        groupWrapper.className = 'bg-white rounded-xl border border-slate-200 p-3.5 shadow-sm space-y-3';
+
+        const currentTime = groupList[0]?.time || '00:00～00:00';
+
+        if (appState.isAdmin) {
+          groupWrapper.innerHTML = `
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-amber-200 pb-2.5 gap-2 bg-amber-50/50 p-2 rounded-lg border">
+              <div class="flex items-center space-x-2 flex-1">
+                <span class="text-xs font-bold text-amber-900">コマ枠:</span>
+                <input type="text" value="${period}" onchange="updateGroupPeriodName('${category}', '${period}', this.value)" class="w-20 border border-amber-300 rounded px-2 py-1 text-xs font-bold text-slate-800" placeholder="コマ名">
+                <span class="text-xs font-bold text-amber-900 ml-2">時間帯:</span>
+                <input type="text" value="${currentTime}" onchange="updateGroupTime('${category}', '${period}', this.value)" class="w-36 border border-amber-300 rounded px-2 py-1 text-xs font-semibold text-slate-800" placeholder="例: 08:50～09:40">
+              </div>
+              <div class="flex items-center space-x-2 self-end sm:self-auto">
+                <button onclick="addSubjectToGroup('${category}', '${period}', '${currentTime}')" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-2.5 py-1 rounded shadow flex items-center">
+                  <i data-lucide="plus" class="w-3.5 h-3.5 mr-1"></i> 科目を追加
+                </button>
+                <button onclick="deletePeriodGroup('${category}', '${period}')" class="bg-rose-100 hover:bg-rose-200 text-rose-700 text-xs font-bold px-2 py-1 rounded">
+                  枠ごと削除
+                </button>
+              </div>
+            </div>
+            <div class="space-y-2" id="group-items-${category}-${period}"></div>
+          `;
+        } else {
+          groupWrapper.innerHTML = `
+            <div class="flex items-center justify-between border-b border-slate-100 pb-2">
+              <div class="flex items-center space-x-2">
+                <span class="font-bold text-slate-800 text-base">${period}</span>
+                <span class="text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-0.5 rounded-full font-semibold">${currentTime}</span>
+              </div>
+              <span class="text-[11px] text-slate-400 font-medium">${groupList.length} 件の開講科目</span>
+            </div>
+            <div class="space-y-2" id="group-items-${category}-${period}"></div>
+          `;
+        }
+
+        container.appendChild(groupWrapper);
+        const itemsContainer = groupWrapper.querySelector(`#group-items-${category}-${period}`);
+
+        groupList.forEach(c => {
+          const div = document.createElement('div');
+          div.className = `p-3 rounded-lg border transition flex justify-between items-center gap-2 ${c.selected ? 'bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-400' : 'bg-slate-50 border-slate-200'}`;
+
+          if (appState.isAdmin) {
+            div.innerHTML = `
+              <div class="flex-1">
+                <input type="text" value="${c.subject || ''}" placeholder="科目名を入力（例: 現代の国語）" onchange="updateSubjectName('${category}', '${c.id}', this.value)" class="w-full border rounded px-2 py-1.5 text-xs font-bold">
+              </div>
+              <button onclick="deleteSubject('${category}', '${c.id}')" class="text-rose-600 hover:text-rose-800 text-xs font-bold px-2.5 py-1 bg-rose-50 rounded border border-rose-200">削除</button>
+            `;
+          } else {
+            div.innerHTML = `
+              <div>
+                <div class="font-bold text-slate-800 text-sm">${c.subject || '（科目未入力）'}</div>
+              </div>
+              <button onclick="selectCourse('${category}', '${c.id}', '${c.period}')" class="px-4 py-1.5 rounded-lg text-xs font-bold transition shadow-sm ${c.selected ? 'bg-emerald-600 text-white shadow-emerald-200' : 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-100'}">
+                ${c.selected ? '✓ 受講する' : '選択する'}
+              </button>
+            `;
+          }
+          itemsContainer.appendChild(div);
+        });
+      });
+    }
+
+    // Render Exam Category
+    function renderExamCategory() {
+      const container = document.getElementById('examCourses');
+      if (!container) return;
+      container.innerHTML = '';
+
+      appState.courses.exam.forEach(e => {
+        const div = document.createElement('div');
+        div.className = 'p-3 rounded-lg border border-slate-200 bg-slate-50 flex justify-between items-center text-xs';
+        div.innerHTML = `
+          <div class="flex items-center space-x-3">
+            <span class="font-bold text-slate-800 text-sm">${e.period}</span>
+            <span class="bg-white px-2 py-1 rounded border text-slate-700 font-medium">${e.time}</span>
+            <span class="text-slate-600">${e.note || ''}</span>
+          </div>
+          <span class="text-slate-500 font-semibold">${e.dayOfWeek || ''}</span>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function addExamSlot() {
+      const newPeriod = prompt('時間枠名を入力（例: 7時程）:', '新時間枠');
+      const newTime = prompt('時間帯を入力（例: 15:30～16:10）:', '15:30～16:10');
+      if (newPeriod) {
+        appState.courses.exam.push({
+          id: 'e_' + Date.now(),
+          period: newPeriod,
+          time: newTime || '',
+          note: '',
+          dayOfWeek: '日・火'
+        });
+        saveState();
+      }
+    }
+
+    // Render Deadlines
+    function renderDeadlines() {
+      const container = document.getElementById('deadlinesList');
+      const todayListContainer = document.getElementById('todayDeadlinesList');
+      if (!container) return;
+
+      container.innerHTML = '';
+      if (todayListContainer) todayListContainer.innerHTML = '';
+
+      appState.deadlines.forEach(d => {
+        const card = document.createElement('div');
+        card.className = 'p-3 rounded-lg border border-slate-200 bg-slate-50/80 flex justify-between items-center text-xs';
+        card.innerHTML = `
+          <div>
+            <div class="font-bold text-slate-800 text-sm">${d.title}</div>
+            <div class="text-slate-500 mt-0.5">${d.date} (${d.dayOfWeek || ''}) ${d.time || ''}</div>
+          </div>
+          ${appState.isAdmin ? `<button onclick="deleteDeadline('${d.id}')" class="text-rose-600 font-bold bg-rose-50 px-2 py-1 rounded border border-rose-200">削除</button>` : `<span class="bg-indigo-50 text-indigo-700 font-bold px-2.5 py-1 rounded-full border border-indigo-200">締切・日程</span>`}
+        `;
+        container.appendChild(card);
+
+        if (todayListContainer) {
+          const clone = card.cloneNode(true);
+          todayListContainer.appendChild(clone);
+        }
+      });
+    }
+
+    function openDeadlineModal() { document.getElementById('deadlineModal').classList.remove('hidden'); }
+    function closeDeadlineModal() { document.getElementById('deadlineModal').classList.add('hidden'); }
+    function saveDeadlineModal() {
+      const title = document.getElementById('modalDeadlineTitle').value;
+      const date = document.getElementById('modalDeadlineDate').value;
+      const day = document.getElementById('modalDeadlineDay').value;
+      const time = document.getElementById('modalDeadlineTime').value;
+
+      if (title && date) {
+        appState.deadlines.push({ id: 'd_' + Date.now(), title, date, dayOfWeek: day, time });
+        closeDeadlineModal();
+        saveState();
+      }
+    }
+    function deleteDeadline(id) {
+      if (confirm('削除しますか？')) {
+        appState.deadlines = appState.deadlines.filter(d => d.id !== id);
+        saveState();
+      }
+    }
+
+    // Render Notices
+    function renderNotices() {
+      const container = document.getElementById('noticesList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      appState.notices.forEach(n => {
+        const div = document.createElement('div');
+        div.className = 'bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-1.5';
+        div.innerHTML = `
+          <div class="flex justify-between items-center">
+            <h3 class="font-bold text-slate-800 text-sm">${n.title}</h3>
+            <span class="text-xs text-slate-400">${n.date}</span>
+          </div>
+          <p class="text-xs text-slate-600 whitespace-pre-line">${n.content}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function openNoticeModal() { document.getElementById('noticeModal').classList.remove('hidden'); }
+    function closeNoticeModal() { document.getElementById('noticeModal').classList.add('hidden'); }
+    function saveNoticeModal() {
+      const title = document.getElementById('modalNoticeTitle').value;
+      const content = document.getElementById('modalNoticeContent').value;
+      if (title && content) {
+        appState.notices.unshift({
+          id: 'n_' + Date.now(),
+          title,
+          content,
+          date: new Date().toISOString().split('T')[0]
+        });
+        closeNoticeModal();
+        saveState();
+      }
+    }
+
+    // Render Chat
+    function renderChat() {
+      const container = document.getElementById('chatMessages');
+      if (!container) return;
+      container.innerHTML = '';
+
+      appState.chatMessages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = `flex flex-col ${msg.isMe ? 'items-end' : 'items-start'}`;
+        div.innerHTML = `
+          <span class="text-[10px] text-slate-400 mb-0.5 px-1">${msg.sender} ・ ${msg.time}</span>
+          <div class="max-w-[80%] p-3 rounded-xl text-xs ${msg.isMe ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-none shadow-sm'}">
+            ${msg.text}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function sendChatMessage() {
+      const input = document.getElementById('chatInput');
+      if (input.value.trim() !== '') {
+        const now = new Date();
+        const timeStr = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+        appState.chatMessages.push({
+          id: 'c_' + Date.now(),
+          sender: appState.isAdmin ? 'アステ(運営)' : '家族メンバー',
+          text: input.value.trim(),
+          time: timeStr,
+          isMe: true
+        });
+        input.value = '';
+        saveState();
+      }
+    }
+
+    // Submit & Render Reports
+    function submitReport(e) {
+      e.preventDefault();
+      const txt = document.getElementById('reportText');
+      if (txt.value.trim() !== '') {
+        appState.reports.unshift({
+          id: 'rep_' + Date.now(),
+          content: txt.value.trim(),
+          date: new Date().toLocaleString('ja-JP'),
+          studentId: appState.studentId
+        });
+        txt.value = '';
+        alert('運営（アステ）へ報告を送信しました。');
+        saveState();
+      }
+    }
+
+    function renderReports() {
+      const container = document.getElementById('reportsAdminList');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (appState.reports.length === 0) {
+        container.innerHTML = '<p class="text-xs text-purple-400">現在、未対応の報告はありません。</p>';
+        return;
+      }
+
+      appState.reports.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'bg-white p-3 rounded-lg border border-purple-200 text-xs text-slate-700 space-y-1';
+        div.innerHTML = `
+          <div class="flex justify-between font-bold text-purple-900">
+            <span>生徒番号: ${r.studentId}</span>
+            <span class="text-[10px] text-slate-400">${r.date}</span>
+          </div>
+          <p class="text-slate-800">${r.content}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    // Initial Load
+    document.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+      initFirebaseSync();
+    });
+  </script>
+</body>
+</html>
