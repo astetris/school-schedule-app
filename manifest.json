@@ -1,0 +1,21 @@
+{
+  "name": "時間割プロ",
+  "short_name": "時間割プロ",
+  "description": "通信制高校 家族共有時間割アプリ",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#4f46e5",
+  "theme_color": "#4f46e5",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3652/3652191.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3652/3652191.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
