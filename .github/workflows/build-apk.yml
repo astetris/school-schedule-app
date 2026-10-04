@@ -1,0 +1,68 @@
+name: Build Standalone Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - 主要
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Java 21の依存関係エラーを回避するため安定版17に固定
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle Environment
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Prepare Web Assets Folder
+        run: |
+          mkdir -p www
+          cp index.html www/
+          cp -f manifest.json www/ 2>/dev/null || true
+          cp -f sw.js www/ 2>/dev/null || true
+
+      # Capacitorのメジャーバージョンをv6に固定してビルド崩れを防止
+      - name: Install Capacitor & Android Platform
+        run: |
+          npm init -y
+          npm install @capacitor/core@^6.0.0 @capacitor/cli@^6.0.0 @capacitor/android@^6.0.0
+          npx cap init "時間割プロ" "com.aste.jikanwaripro" --web-dir "www"
+          npx cap add android
+
+      - name: Sync Web Assets to Android App
+        run: |
+          npx cap sync android
+
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --no-parallel
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "時間割プロ 最新版 (APK)"
+          body: "厚木清南高校通信制 家族共有時間割アプリの最新ビルドです。"
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
